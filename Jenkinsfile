@@ -32,9 +32,13 @@ pipeline {
                             AUTH=$(printf '%s:%s' "${HARBOR_USER}" "${HARBOR_PASS}" | base64 | tr -d '\n')
                             printf '{"auths":{"harbor.tuxgrid.com":{"auth":"%s"}}}' "${AUTH}" \
                                 > /kaniko/.docker/config.json
+                            PLATFORM_CA_B64=$(base64 -w0 /mitm-data/ca.pem 2>/dev/null || true)
                             /kaniko/executor \
                                 --context=dir://. \
                                 --dockerfile=Dockerfile \
+                                --build-arg "PLATFORM_CA_B64=${PLATFORM_CA_B64}" \
+                                --build-arg HTTPS_PROXY=http://127.0.0.1:8080 \
+                                --build-arg HTTP_PROXY=http://127.0.0.1:8080 \
                                 --destination=${IMAGE}:${GIT_COMMIT:0:7} \
                                 --destination=${IMAGE}:latest \
                                 --digest-file=${WORKSPACE}/image.digest \
@@ -127,6 +131,8 @@ if git_commit:
     deps.insert(0, {"uri": git_url, "digest": {"gitCommit": git_commit}})
 
 now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+ts_ms = os.environ.get("BUILD_TIMESTAMP", "")
+started = datetime.datetime.utcfromtimestamp(int(ts_ms) / 1000).strftime("%Y-%m-%dT%H:%M:%SZ") if ts_ms else now
 provenance = {
     "buildDefinition": {
         "buildType": "https://tuxgrid.com/buildType/jenkins-kaniko/v1",
@@ -141,7 +147,7 @@ provenance = {
         "builder": {"id": "https://jenkins.tuxgrid.com/job/" + os.environ.get("JOB_NAME", "") + "/" + os.environ.get("BUILD_NUMBER", "")},
         "metadata": {
             "invocationId": os.environ.get("BUILD_URL", ""),
-            "startedOn": now,
+            "startedOn": started,
             "finishedOn": now,
         },
     },
